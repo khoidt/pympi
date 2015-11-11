@@ -6,7 +6,7 @@ import re
 import sys
 import time
 
-VERSION = '1.6'
+VERSION = '1.39'
 
 
 class Eaf:
@@ -81,8 +81,8 @@ class Eaf:
 
         ctz = -time.altzone if time.localtime(time.time()).tm_isdst and\
             time.daylight else -time.timezone
-        self.maxts = 1
-        self.maxaid = 1
+        self.maxts = None
+        self.maxaid = None
         self.adocument = {
             'AUTHOR': author,
             'DATE': time.strftime('%Y-%m-%dT%H:%M:%S{:0=+3d}:{:0=2d}').format(
@@ -397,11 +397,15 @@ class Eaf:
             self.tiers[tier_id] = ({}, {}, tier_dict, len(self.tiers))
 
     def child_tiers_for(self, id_tier):
-        """.. deprecated: 1.5
-        
-        Use :func:`get_child_tiers_for`
+        """Give all child tiers for a tier.
+
+        :param str id_tier: Name of the tier.
+        :returns: List of all children
+        :raises KeyError: If the tier is non existent.
         """
-        return self.get_child_tiers_for(id_tier)
+        self.tiers[id_tier]
+        return [m for m in self.tiers if 'PARENT_REF' in self.tiers[m][2] and
+                self.tiers[m][2]['PARENT_REF'] == id_tier]
 
     def clean_time_slots(self):
         """Clean up all unused timeslots.
@@ -492,7 +496,6 @@ class Eaf:
             matches.
         :param bool safe: Ignore zero length annotations(when working with
             possible malformed data).
-        :returns: Name of the created tier.
         :raises KeyError: If the tier is non existent.
         """
         if tier_name is None:
@@ -506,16 +509,16 @@ class Eaf:
             if not safe or end > begin:
                 self.add_annotation(tier_name, begin, end, value)
         self.clean_time_slots()
-        return tier_name
 
     def generate_annotation_id(self):
         """Generate the next annotation id, this function is mainly used
         internally.
         """
-        if not self.maxaid:
-            valid_anns = [int(''.join(filter(str.isdigit, a)))
-                          for a in self.timeslots]
-            self.maxaid = max(valid_anns + [1])+1
+        if self.maxaid is None:
+            self.maxaid = 1
+            valid_anns = [a for a in self.annotations if re.match('.\d+', a)]
+            if valid_anns:
+                self.maxaid = max(int(x[1:]) for x in valid_anns)+1
         else:
             self.maxaid += 1
         return 'a{:d}'.format(self.maxaid)
@@ -529,10 +532,11 @@ class Eaf:
         """
         if time and time < 0:
             raise ValueError('Time is negative...')
-        if not self.maxts:
-            valid_ts = [int(''.join(filter(str.isdigit, a)))
-                        for a in self.timeslots]
-            self.maxts = max(valid_ts + [1])+1
+        if self.maxts is None:
+            self.maxts = 1
+            valid_ts = [a for a in self.timeslots if re.match('..\d+', a)]
+            if valid_ts:
+                self.maxts = max(int(x[2:]) for x in valid_ts)+1
         else:
             self.maxts += 1
         ts = 'ts{:d}'.format(self.maxts)
@@ -558,8 +562,6 @@ class Eaf:
 
     def get_annotation_data_between_times(self, id_tier, start, end):
         """Gives the annotations within the times.
-        When the tier contains reference annotations this will be returned,
-        check :func:`get_ref_annotation_data_between_times` for the format.
 
         :param str id_tier: Name of the tier.
         :param int start: Start time of the annotation.
@@ -567,16 +569,13 @@ class Eaf:
         :returns: List of annotations within that time.
         :raises KeyError: If the tier is non existent.
         """
-        if self.tiers[id_tier][1]:
-            return self.get_ref_annotation_data_between_times(
-                id_tier, start, end)
         anns = ((self.timeslots[a[0]], self.timeslots[a[1]], a[2])
                 for a in self.tiers[id_tier][0].values())
         return sorted(a for a in anns if a[1] >= start and a[0] <= end)
 
     def get_annotation_data_for_tier(self, id_tier):
         """Gives a list of annotations of the form: ``(begin, end, value)``
-        When the tier contains reference annotations this will be returned,
+        When th tier contains reference annotations this will be returned,
         check :func:`get_ref_annotation_data_for_tier` for the format.
 
         :param str id_tier: Name of the tier.
@@ -587,17 +586,6 @@ class Eaf:
         a = self.tiers[id_tier][0]
         return [(self.timeslots[a[b][0]], self.timeslots[a[b][1]], a[b][2])
                 for b in a]
-
-    def get_child_tiers_for(self, id_tier):
-        """Give all child tiers for a tier.
-
-        :param str id_tier: Name of the tier.
-        :returns: List of all children
-        :raises KeyError: If the tier is non existent.
-        """
-        self.tiers[id_tier]
-        return [m for m in self.tiers if 'PARENT_REF' in self.tiers[m][2] and
-                self.tiers[m][2]['PARENT_REF'] == id_tier]
 
     def get_full_time_interval(self):
         """Give the full time interval of the file. Note that the real interval
@@ -847,25 +835,6 @@ class Eaf:
                 bucket.append((begin, end, value, rvalue))
         return bucket
 
-    def get_ref_annotation_data_between_times(self, id_tier, start, end):
-        """Give the ref annotations between times of the form
-        ``[(start, end, value, refvalue)]``
-
-        :param str tier: Name of the tier.
-        :param int start: End time of the annotation of the parent.
-        :param int end: Start time of the annotation of the parent.
-        :returns: List of annotations at that time.
-        :raises KeyError: If the tier is non existent.
-        """
-        bucket = []
-        for aid, (ref, value, _, _) in self.tiers[id_tier][1].items():
-            begin, end, rvalue, _ = self.tiers[self.annotations[ref]][0][ref]
-            begin = self.timeslots[begin]
-            end = self.timeslots[end]
-            if begin <= end and end >= begin:
-                bucket.append((begin, end, value, rvalue))
-        return bucket
-
     def get_ref_annotation_data_for_tier(self, id_tier):
         """"Give a list of all reference annotations of the form:
         ``[(start, end, value, refvalue)]``
@@ -932,11 +901,10 @@ class Eaf:
         :param str sep: Separator for the merged annotations.
         :param bool safe: Ignore zero length annotations(when working with
             possible malformed data).
-        :returns: Name of the created tier.
         :raises KeyError: If a tier is non existent.
         """
         if tiernew is None:
-            tiernew = u'{}_merged'.format('_'.join(tiers))
+            tiernew = '{}_merged'.format('_'.join(tiers))
         self.add_tier(tiernew)
         aa = [(sys.maxsize, sys.maxsize, None)] + sorted((
             a for t in tiers for a in self.get_annotation_data_for_tier(t)),
@@ -954,7 +922,6 @@ class Eaf:
                 if end > l[1]:
                     l[1] = end
                 l[2].append(value)
-        return tiernew
 
     def remove_all_annotations_from_tier(self, id_tier, clean=True):
         """remove all annotations from a tier
@@ -974,9 +941,7 @@ class Eaf:
 
     def remove_annotation(self, id_tier, time, clean=True):
         """Remove an annotation in a tier, if you need speed the best thing is
-        to clean the timeslots after the last removal. When the tier contains 
-        reference annotations :func:`remove_ref_annotation` will be executed
-        instead.
+        to clean the timeslots after the last removal.
 
         :param str id_tier: Name of the tier.
         :param int time: Timepoint within the annotation.
@@ -984,8 +949,6 @@ class Eaf:
         :raises KeyError: If the tier is non existent.
         :returns: Number of removed annotations.
         """
-        if self.tiers[id_tier][1]:
-            return self.remove_ref_annotation(id_tier, time, clean)
         removed = 0
         for b in [a for a in self.tiers[id_tier][0].items() if
                   self.timeslots[a[1][0]] <= time and
@@ -1112,27 +1075,6 @@ class Eaf:
             if (key is None or key == k) and (value is None or value == v):
                 del(self.properties[self.properties.index((k, v))])
 
-    def remove_ref_annotation(self, id_tier, time):
-        """Remove a reference annotation.
-
-        :param str id_tier: Name of tier.
-        :param int time: Time of the referenced annotation
-        :raises KeyError: If the tier is non existent.
-        :returns: Number of removed annotations.
-        """
-        removed = 0
-        bucket = []
-        for aid, (ref, value, _, _) in self.tiers[id_tier][1].items():
-            begin, end, rvalue, _ = self.tiers[self.annotations[ref]][0][ref]
-            begin = self.timeslots[begin]
-            end = self.timeslots[end]
-            if begin <= time and end >= time:
-                removed += 1
-                bucket.append(aid)
-        for aid in bucket:
-            del(self.tiers[id_tier][1][aid])
-        return removed
-
     def remove_secondary_linked_files(self, file_path=None, relpath=None,
                                       mimetype=None, time_origin=None,
                                       assoc_with=None):
@@ -1191,7 +1133,7 @@ class Eaf:
         :param str id_to: Target name of the tier.
         :throws KeyError: If the tier doesnt' exist.
         """
-        childs = self.get_child_tiers_for(id_from)
+        childs = self.child_tiers_for(id_from)
         self.tiers[id_to] = self.tiers.pop(id_from)
         self.tiers[id_to][2]['TIER_ID'] = id_to
         for child in childs:
@@ -1354,12 +1296,10 @@ def parse_eaf(file_path, eaf_obj):
         file_path = sys.stdin
     # Annotation document
     tree_root = etree.parse(file_path).getroot()
-    if tree_root.attrib['VERSION'] not in ['2.8', '2.7']:
-        sys.stdout.write('Parsing unknown version of ELAN spec... '
-                         'This could result in errors...\n')
     eaf_obj.adocument.update(tree_root.attrib)
-    del(eaf_obj.adocument['{http://www.w3.org/2001/XMLSchema-instance}noNamesp'
-                          'aceSchemaLocation'])
+    del(eaf_obj.adocument[
+        '{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation'
+        ])
     tier_number = 0
     for elem in tree_root:
         # Licence
@@ -1379,12 +1319,12 @@ def parse_eaf(file_path, eaf_obj):
         # Time order
         elif elem.tag == 'TIME_ORDER':
             for elem1 in elem:
-                tsid = elem1.attrib['TIME_SLOT_ID']
-                tsnum = int(''.join(filter(str.isdigit, tsid)))
-                if tsnum and tsnum > eaf_obj.maxts:
-                    eaf_obj.maxts = tsnum
+                if eaf_obj.maxts != None: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
+                    if int(elem1.attrib['TIME_SLOT_ID'][2:]) > eaf_obj.maxts:
+                        eaf_obj.maxts = int(elem1.attrib['TIME_SLOT_ID'][2:])
                 ts = elem1.attrib.get('TIME_VALUE', None)
-                eaf_obj.timeslots[tsid] = ts if ts is None else int(ts)
+                eaf_obj.timeslots[elem1.attrib['TIME_SLOT_ID']] =\
+                    ts if ts is None else int(ts)
         # Tier
         elif elem.tag == 'TIER':
             tier_id = elem.attrib['TIER_ID']
@@ -1395,10 +1335,10 @@ def parse_eaf(file_path, eaf_obj):
                     for elem2 in elem1:
                         if elem2.tag == 'ALIGNABLE_ANNOTATION':
                             annot_id = elem2.attrib['ANNOTATION_ID']
-                            annot_num = int(''.join(
-                                filter(str.isdigit, annot_id)))
-                            if annot_num and annot_num > eaf_obj.maxaid:
-                                eaf_obj.maxaid = annot_num
+                            if eaf_obj.maxaid != None: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
+                                if re.match('a\d+', annot_id) and\
+                                        int(annot_id[1:]) > eaf_obj.maxaid:
+                                    eaf_obj.maxaid = int(annot_id[1:])
                             annot_start = elem2.attrib['TIME_SLOT_REF1']
                             annot_end = elem2.attrib['TIME_SLOT_REF2']
                             svg_ref = elem2.attrib.get('SVG_REF', None)
@@ -1408,20 +1348,19 @@ def parse_eaf(file_path, eaf_obj):
                                                svg_ref)
                             eaf_obj.annotations[annot_id] = tier_id
                         elif elem2.tag == 'REF_ANNOTATION':
-                            annot_ref = elem2.attrib['ANNOTATION_REF']
+                            annotRef = elem2.attrib['ANNOTATION_REF']
                             previous = elem2.attrib.get('PREVIOUS_ANNOTATION',
                                                         None)
-                            annot_id = elem2.attrib['ANNOTATION_ID']
-                            annot_num = int(''.join(
-                                filter(str.isdigit, annot_id)))
-                            if annot_num and annot_num > eaf_obj.maxaid:
-                                eaf_obj.maxaid = annot_num
+                            annotId = elem2.attrib['ANNOTATION_ID']
+                            if re.match('a\d+', annot_id) and\
+                                    int(annot_id[1:]) > eaf_obj.maxaid:
+                                eaf_obj.maxaid = int(annot_id[1:])
                             svg_ref = elem2.attrib.get('SVG_REF', None)
-                            ref[annot_id] = (annot_ref,
-                                             '' if not list(elem2)[0].text else
-                                             list(elem2)[0].text,
-                                             previous, svg_ref)
-                            eaf_obj.annotations[annot_id] = tier_id
+                            ref[annotId] = (annotRef,
+                                            '' if not list(elem2)[0].text else
+                                            list(elem2)[0].text,
+                                            previous, svg_ref)
+                            eaf_obj.annotations[annotId] = tier_id
             eaf_obj.tiers[tier_id] = (align, ref, elem.attrib, tier_number)
             tier_number += 1
         # Linguistic type
@@ -1447,21 +1386,10 @@ def parse_eaf(file_path, eaf_obj):
             cv_id = elem.attrib['CV_ID']
             ext_ref = elem.attrib.get('EXT_REF', None)
             descriptions = []
-
-            if 'DESCRIPTION' in elem.attrib:
-                eaf_obj.languages['und'] = (
-                    'http://cdb.iso.org/lg/CDB-00130975-001',
-                    'undetermined (und)')
-                descriptions.append(('und', elem.attrib['DESCRIPTION']))
             entries = {}
             for elem1 in elem:
                 if elem1.tag == 'DESCRIPTION':
                     descriptions.append((elem1.attrib['LANG_REF'], elem1.text))
-                elif elem1.tag == 'CV_ENTRY':
-                    cve_value = (elem1.text, 'und',
-                                 elem1.get('DESCRIPTION', None))
-                    entries['cveid{}'.format(len(entries))] = \
-                        ([cve_value], elem1.attrib.get('EXT_REF', None))
                 elif elem1.tag == 'CV_ENTRY_ML':
                     cem_ext_ref = elem1.attrib.get('EXT_REF', None)
                     cve_id = elem1.attrib['CVE_ID']
@@ -1512,16 +1440,7 @@ def to_eaf(file_path, eaf_obj, pretty=True):
     :param bool pretty: Flag to set pretty printing.
     """
     def rm_none(x):
-        try:  # Ugly hack to test if s is a string in py3 and py2
-            basestring
-
-            def isstr(s):
-                return isinstance(s, basestring)
-        except NameError:
-            def isstr(s):
-                return isinstance(s, str)
-        return {k: v if isstr(v) else str(v) for k, v in x.items()
-                if v is not None}
+        return {k: str(v) for k, v in x.items() if v is not None}
     # Annotation Document
     ADOCUMENT = etree.Element('ANNOTATION_DOCUMENT', eaf_obj.adocument)
     # Licence
@@ -1545,7 +1464,7 @@ def to_eaf(file_path, eaf_obj, pretty=True):
         etree.SubElement(TIME_ORDER, 'TIME_SLOT', rm_none(
             {'TIME_SLOT_ID': t[0], 'TIME_VALUE': t[1]}))
     # Tiers
-    for t in sorted(eaf_obj.tiers.items(), key=lambda x: x[1][3]):
+    for t in eaf_obj.tiers.items():
         tier = etree.SubElement(ADOCUMENT, 'TIER', rm_none(t[1][2]))
         for a in t[1][0].items():
             ann = etree.SubElement(tier, 'ANNOTATION')
