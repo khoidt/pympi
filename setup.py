@@ -5,7 +5,7 @@ from distutils.core import setup
 
 licence = '"THE BEER-WARE LICENSE" (Revision 42)'
 version = '1.6'
-long_description=b"""
+long_description=r"""
 pympi version 1.6
 =================
 
@@ -104,7 +104,7 @@ setup(name='pympi-ling',
       description=
         'A python module for processing ELAN and Praat annotation files',
       author='Mart Lubbers',
-      long_description=long_description.decode("UTF-8"),
+      long_description=long_description.encode("UTF-8"),
       author_email='mart@martlubbers.net',
       url='https://github.com/dopefishh/pympi',
       classifiers=['Development Status :: 5 - Production/Stable',
