@@ -5,13 +5,7 @@ from distutils.core import setup
 
 licence = '"THE BEER-WARE LICENSE" (Revision 42)'
 version = '1.6'
-
-setup(name='pympi-ling',
-      version=version,
-      description=
-        'A python module for processing ELAN and Praat annotation files',
-      author='Mart Lubbers',
-      long_description="""
+long_description="""
 pympi version 1.6
 =================
 
@@ -103,7 +97,14 @@ Under supervision of: Francisco Toreirra (francisco.torreira at mpi.nl)
 .. _Heldner and Edlund’s method: http://www.sciencedirect.com/science/article/pii/S0095447010000628
 .. _lxml: http://lxml.de/
 .. _here: http://dopefishh.github.io/pympi/
-.. _pypi: http://dopefishh.github.io/pympi/""",
+.. _pypi: http://dopefishh.github.io/pympi/"""
+
+setup(name='pympi-ling',
+      version=version,
+      description=
+        'A python module for processing ELAN and Praat annotation files',
+      author='Mart Lubbers',
+      long_description=long_description.encode("UTF-8"),
       author_email='mart@martlubbers.net',
       url='https://github.com/dopefishh/pympi',
       classifiers=['Development Status :: 5 - Production/Stable',
