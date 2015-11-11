@@ -1319,8 +1319,7 @@ def parse_eaf(file_path, eaf_obj):
         # Time order
         elif elem.tag == 'TIME_ORDER':
             for elem1 in elem:
-                print([int(elem1.attrib['TIME_SLOT_ID'][2:]), eaf_obj.maxts])
-                if eaf_obj.maxts != None: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
+                if type(eaf_obj.maxts) == int: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
                     if int(elem1.attrib['TIME_SLOT_ID'][2:]) > eaf_obj.maxts:
                         eaf_obj.maxts = int(elem1.attrib['TIME_SLOT_ID'][2:])
                 ts = elem1.attrib.get('TIME_VALUE', None)
@@ -1336,7 +1335,7 @@ def parse_eaf(file_path, eaf_obj):
                     for elem2 in elem1:
                         if elem2.tag == 'ALIGNABLE_ANNOTATION':
                             annot_id = elem2.attrib['ANNOTATION_ID']
-                            if eaf_obj.maxaid != None: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
+                            if type(eaf_obj.maxaid) == int: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
                                 if re.match('a\d+', annot_id) and\
                                         int(annot_id[1:]) > eaf_obj.maxaid:
                                     eaf_obj.maxaid = int(annot_id[1:])
