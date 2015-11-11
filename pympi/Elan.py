@@ -1319,6 +1319,7 @@ def parse_eaf(file_path, eaf_obj):
         # Time order
         elif elem.tag == 'TIME_ORDER':
             for elem1 in elem:
+                print([int(elem1.attrib['TIME_SLOT_ID'][2:]), eaf_obj.maxts])
                 if eaf_obj.maxts != None: #ADDED TO AVOID unorderable types: int() > NoneType() ERROR
                     if int(elem1.attrib['TIME_SLOT_ID'][2:]) > eaf_obj.maxts:
                         eaf_obj.maxts = int(elem1.attrib['TIME_SLOT_ID'][2:])
